@@ -1057,4 +1057,198 @@ describe("ChatTextArea", () => {
 			expect(apiConfigDropdown).toHaveAttribute("disabled")
 		})
 	})
+
+	describe("visual history navigation buttons", () => {
+		const mockClineMessages = [
+			{ type: "say", say: "user_feedback", text: "First prompt", ts: 1000 },
+			{ type: "say", say: "user_feedback", text: "Second prompt", ts: 2000 },
+			{ type: "say", say: "user_feedback", text: "Third prompt", ts: 3000 },
+		]
+
+		beforeEach(() => {
+			;(useExtensionState as ReturnType<typeof vi.fn>).mockReturnValue({
+				filePaths: [],
+				openedTabs: [],
+				apiConfiguration: {
+					apiProvider: "anthropic",
+				},
+				taskHistory: [],
+				clineMessages: mockClineMessages,
+				cwd: "/test/workspace",
+			})
+		})
+
+		// Helper functions to get the history buttons
+		const getHistoryUpButton = () => {
+			return screen.getByRole("button", {
+				name: "chat:historyUp",
+			})
+		}
+
+		const getHistoryDownButton = () => {
+			return screen.getByRole("button", {
+				name: "chat:historyDown",
+			})
+		}
+
+		it("should display history buttons when prompt history exists", () => {
+			render(<ChatTextArea {...defaultProps} />)
+
+			expect(getHistoryUpButton()).toBeInTheDocument()
+			expect(getHistoryDownButton()).toBeInTheDocument()
+		})
+
+		it("should not display history buttons when no prompt history exists", () => {
+			;(useExtensionState as ReturnType<typeof vi.fn>).mockReturnValue({
+				filePaths: [],
+				openedTabs: [],
+				apiConfiguration: {
+					apiProvider: "anthropic",
+				},
+				taskHistory: [],
+				clineMessages: [],
+				cwd: "/test/workspace",
+			})
+
+			render(<ChatTextArea {...defaultProps} />)
+
+			expect(screen.queryByRole("button", { name: /Previous message/ })).not.toBeInTheDocument()
+			expect(screen.queryByRole("button", { name: /Next message/ })).not.toBeInTheDocument()
+		})
+
+		it("should disable up button when at the oldest message", () => {
+			const setInputValue = vi.fn()
+			const { container } = render(<ChatTextArea {...defaultProps} setInputValue={setInputValue} inputValue="" />)
+
+			const textarea = container.querySelector("textarea")!
+			// Navigate to the oldest message (index 2)
+			fireEvent.keyDown(textarea, { key: "ArrowUp" })
+			fireEvent.keyDown(textarea, { key: "ArrowUp" })
+			fireEvent.keyDown(textarea, { key: "ArrowUp" })
+
+			const upButton = getHistoryUpButton()
+			expect(upButton).toBeDisabled()
+		})
+
+		it("should enable up button when not at the newest message", () => {
+			const setInputValue = vi.fn()
+			const { container } = render(<ChatTextArea {...defaultProps} setInputValue={setInputValue} inputValue="" />)
+
+			const textarea = container.querySelector("textarea")!
+			// Navigate to previous message first
+			fireEvent.keyDown(textarea, { key: "ArrowUp" })
+
+			const upButton = getHistoryUpButton()
+			expect(upButton).not.toBeDisabled()
+		})
+
+		it("should disable down button when not in history navigation", () => {
+			const setInputValue = vi.fn()
+			render(<ChatTextArea {...defaultProps} setInputValue={setInputValue} inputValue="" />)
+
+			// Initially, historyIndex is -1, so down button should be disabled
+			const downButton = getHistoryDownButton()
+			expect(downButton).toBeDisabled()
+		})
+
+		it("should enable down button when not at the oldest message", () => {
+			const setInputValue = vi.fn()
+			const { container } = render(<ChatTextArea {...defaultProps} setInputValue={setInputValue} inputValue="" />)
+
+			const textarea = container.querySelector("textarea")!
+			// Navigate to previous message
+			fireEvent.keyDown(textarea, { key: "ArrowUp" })
+
+			const downButton = getHistoryDownButton()
+			expect(downButton).not.toBeDisabled()
+		})
+
+		it("should navigate to previous message when up button is clicked", () => {
+			const setInputValue = vi.fn()
+			render(<ChatTextArea {...defaultProps} setInputValue={setInputValue} inputValue="" />)
+
+			const upButton = getHistoryUpButton()
+			fireEvent.click(upButton)
+
+			// Should set the newest conversation message (first in reversed array)
+			expect(setInputValue).toHaveBeenCalledWith("Third prompt")
+		})
+
+		it("should navigate to next message when down button is clicked", () => {
+			const setInputValue = vi.fn()
+			const { container } = render(<ChatTextArea {...defaultProps} setInputValue={setInputValue} inputValue="" />)
+
+			const textarea = container.querySelector("textarea")!
+			const downButton = getHistoryDownButton()
+
+			// First navigate up to have history to go down from
+			fireEvent.keyDown(textarea, { key: "ArrowUp" })
+			setInputValue.mockClear()
+
+			// Now click down button
+			fireEvent.click(downButton)
+			expect(setInputValue).toHaveBeenCalledWith("")
+		})
+
+		it("should have correct accessibility labels", () => {
+			render(<ChatTextArea {...defaultProps} />)
+
+			const upButton = getHistoryUpButton()
+			const downButton = getHistoryDownButton()
+
+			// The aria-label uses translation keys with fallbacks
+			expect(upButton).toHaveAttribute("aria-label", "chat:historyUp")
+			expect(downButton).toHaveAttribute("aria-label", "chat:historyDown")
+		})
+
+		it("should have correct tooltip content", () => {
+			render(<ChatTextArea {...defaultProps} />)
+
+			// Check for tooltip content in the buttons
+			const upButton = getHistoryUpButton()
+			const downButton = getHistoryDownButton()
+
+			// The tooltip content should be set via StandardTooltip component
+			expect(upButton.closest("[data-tooltip]") || upButton).toBeInTheDocument()
+			expect(downButton.closest("[data-tooltip]") || downButton).toBeInTheDocument()
+		})
+
+		it("should handle button clicks gracefully when no history exists", () => {
+			;(useExtensionState as ReturnType<typeof vi.fn>).mockReturnValue({
+				filePaths: [],
+				openedTabs: [],
+				apiConfiguration: {
+					apiProvider: "anthropic",
+				},
+				taskHistory: [],
+				clineMessages: [],
+				cwd: "/test/workspace",
+			})
+
+			const setInputValue = vi.fn()
+			render(<ChatTextArea {...defaultProps} setInputValue={setInputValue} />)
+
+			// Buttons should not exist when no history
+			expect(screen.queryByRole("button", { name: /Previous message/ })).not.toBeInTheDocument()
+			expect(screen.queryByRole("button", { name: /Next message/ })).not.toBeInTheDocument()
+		})
+
+		it("should maintain button state consistency with keyboard navigation", () => {
+			const setInputValue = vi.fn()
+			const { container } = render(<ChatTextArea {...defaultProps} setInputValue={setInputValue} inputValue="" />)
+
+			const textarea = container.querySelector("textarea")!
+
+			// Navigate using keyboard
+			fireEvent.keyDown(textarea, { key: "ArrowUp" })
+
+			// Check button states match keyboard navigation state
+			const upButton = getHistoryUpButton()
+			const downButton = getHistoryDownButton()
+
+			// After navigating up once, up button should be enabled, down button should be enabled
+			expect(upButton).not.toBeDisabled()
+			expect(downButton).not.toBeDisabled()
+		})
+	})
 })

@@ -1,7 +1,7 @@
 import React, { forwardRef, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { useEvent } from "react-use"
 import DynamicTextArea from "react-textarea-autosize"
-import { VolumeX, Image, WandSparkles, SendHorizontal, MessageSquareX } from "lucide-react"
+import { VolumeX, Image, WandSparkles, SendHorizontal, MessageSquareX, ChevronUp, ChevronDown } from "lucide-react"
 
 import { mentionRegex, mentionRegexGlobal, commandRegexGlobal, unescapeSpaces } from "@roo/context-mentions"
 import { WebviewMessage } from "@roo/WebviewMessage"
@@ -213,13 +213,14 @@ export const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 		const [isFocused, setIsFocused] = useState(false)
 
 		// Use custom hook for prompt history navigation
-		const { handleHistoryNavigation, resetHistoryNavigation, resetOnInputChange } = usePromptHistory({
-			clineMessages,
-			taskHistory,
-			cwd,
-			inputValue,
-			setInputValue,
-		})
+		const { historyIndex, promptHistory, handleHistoryNavigation, resetHistoryNavigation, resetOnInputChange } =
+			usePromptHistory({
+				clineMessages,
+				taskHistory,
+				cwd,
+				inputValue,
+				setInputValue,
+			})
 
 		// Fetch git commits when Git is selected or when typing a hash.
 		useEffect(() => {
@@ -886,6 +887,48 @@ export const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 
 		const placeholderBottomText = `\n(${t("chat:addContext")}${shouldDisableImages ? `, ${t("chat:dragFiles")}` : `, ${t("chat:dragFilesImages")}`})`
 
+		// Handle history navigation buttons
+		const handleHistoryUp = useCallback(() => {
+			if (promptHistory.length > 0 && textAreaRef.current) {
+				const textarea = textAreaRef.current
+				const { selectionStart, selectionEnd } = textarea
+				const hasSelection = selectionStart !== selectionEnd
+				const isAtBeginning = selectionStart === 0 && selectionEnd === 0
+
+				if (!hasSelection && isAtBeginning) {
+					// Create a mock event for navigation
+					const mockEvent = {
+						key: "ArrowUp",
+						preventDefault: () => {},
+						currentTarget: textarea,
+					} as React.KeyboardEvent<HTMLTextAreaElement>
+
+					handleHistoryNavigation(mockEvent, false, false)
+				}
+			}
+		}, [promptHistory, handleHistoryNavigation])
+
+		const handleHistoryDown = useCallback(() => {
+			if (promptHistory.length > 0 && textAreaRef.current && historyIndex >= 0) {
+				const textarea = textAreaRef.current
+				const { selectionStart, selectionEnd, value } = textarea
+				const hasSelection = selectionStart !== selectionEnd
+				const isAtBeginning = selectionStart === 0 && selectionEnd === 0
+				const isAtEnd = selectionStart === value.length && selectionEnd === value.length
+
+				if (!hasSelection && (isAtBeginning || isAtEnd)) {
+					// Create a mock event for navigation
+					const mockEvent = {
+						key: "ArrowDown",
+						preventDefault: () => {},
+						currentTarget: textarea,
+					} as React.KeyboardEvent<HTMLTextAreaElement>
+
+					handleHistoryNavigation(mockEvent, false, false)
+				}
+			}
+		}, [promptHistory, historyIndex, handleHistoryNavigation])
+
 		// Common mode selector handler
 		const handleModeChange = useCallback(
 			(value: Mode) => {
@@ -1099,7 +1142,55 @@ export const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 								</StandardTooltip>
 							</div>
 
-							<div className="absolute bottom-2 right-2 z-30">
+							<div className="absolute bottom-2 right-2 z-30 flex items-center gap-1">
+								{/* History navigation buttons */}
+								{promptHistory.length > 0 && (
+									<div className="flex flex-col gap-0.5">
+										<StandardTooltip content={t("chat:historyUp") || "Previous message (↑)"}>
+											<button
+												aria-label={t("chat:historyUp") || "Previous message"}
+												disabled={historyIndex >= promptHistory.length - 1}
+												onClick={handleHistoryUp}
+												className={cn(
+													"relative inline-flex items-center justify-center",
+													"bg-transparent border-none p-1",
+													"rounded-md min-w-[24px] min-h-[20px]",
+													"opacity-60 hover:opacity-100 text-vscode-descriptionForeground hover:text-vscode-foreground",
+													"transition-all duration-150",
+													"hover:bg-[rgba(255,255,255,0.03)] hover:border-[rgba(255,255,255,0.15)]",
+													"focus:outline-none focus-visible:ring-1 focus-visible:ring-vscode-focusBorder",
+													"active:bg-[rgba(255,255,255,0.1)]",
+													"cursor-pointer",
+													historyIndex >= promptHistory.length - 1 &&
+														"opacity-30 cursor-not-allowed",
+												)}>
+												<ChevronUp className="w-3 h-3" />
+											</button>
+										</StandardTooltip>
+										<StandardTooltip content={t("chat:historyDown") || "Next message (↓)"}>
+											<button
+												aria-label={t("chat:historyDown") || "Next message"}
+												disabled={historyIndex < 0}
+												onClick={handleHistoryDown}
+												className={cn(
+													"relative inline-flex items-center justify-center",
+													"bg-transparent border-none p-1",
+													"rounded-md min-w-[24px] min-h-[20px]",
+													"opacity-60 hover:opacity-100 text-vscode-descriptionForeground hover:text-vscode-foreground",
+													"transition-all duration-150",
+													"hover:bg-[rgba(255,255,255,0.03)] hover:border-[rgba(255,255,255,0.15)]",
+													"focus:outline-none focus-visible:ring-1 focus-visible:ring-vscode-focusBorder",
+													"active:bg-[rgba(255,255,255,0.1)]",
+													"cursor-pointer",
+													historyIndex < 0 && "opacity-30 cursor-not-allowed",
+												)}>
+												<ChevronDown className="w-3 h-3" />
+											</button>
+										</StandardTooltip>
+									</div>
+								)}
+
+								{/* Existing buttons */}
 								{isEditMode && (
 									<StandardTooltip content={t("chat:cancel.title")}>
 										<button
